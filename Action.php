@@ -143,15 +143,16 @@ class Restful_Action extends Typecho_Widget implements Widget_Interface_Do
      * @param integer $status HTTP 状态码
      * @return void
      */
-    private function throwError($message = 'unknown', $status = 400)
-    {
-        Typecho_Response::setStatus($status);
-        $this->response->throwJson(array(
-            'status' => 'error',
-            'message' => $message,
-            'data' => null,
-        ));
-    }
+private function throwError($message = 'unknown', $status = 400)
+{
+    // 使用 $this->response 调用 setStatus 方法
+    $this->response->setStatus($status);
+    $this->response->throwJson(array(
+        'status' => 'error',
+        'message' => $message,
+        'data' => null,
+    ));
+}
 
     /**
      * 以 JSON 格式响应请求的信息
@@ -419,34 +420,45 @@ class Restful_Action extends Typecho_Widget implements Widget_Interface_Do
      *
      * @return void
      */
-    public function postAction()
-    {
-        $this->lockMethod('get');
-        $this->checkState('post');
+public function postAction()
+{
+    $this->lockMethod('get');
+    $this->checkState('post');
 
-        $slug = $this->getParams('slug', '');
-        $cid = $this->getParams('cid', '');
+    $slug = $this->getParams('slug', '');
+    $cid = $this->getParams('cid', '');
 
-        $select = $this->db
-            ->select('title','cid', 'created', 'type', 'slug', 'commentsNum', 'text')
-            ->from('table.contents')
-            ->where('password IS NULL');
-
-        if (is_numeric($cid)) {
-            $select->where('cid = ?', $cid);
-        } else {
-            $select->where('slug = ?', $slug);
-        }
-
-        $result = $this->db->fetchRow($select);
-        if (count($result) != 0) {
-            $result = $this->filter($result);
-            $result['csrfToken'] = $this->generateCsrfToken($result['permalink']);
-            $this->throwData($result);
-        } else {
-            $this->throwError('post not exists', 404);
-        }
+    // 确保至少有一个查询条件
+    if (empty($slug) && empty($cid)) {
+        $this->throwError('slug or cid is required', 400);
     }
+
+    $select = $this->db
+        ->select('title', 'cid', 'created', 'type', 'slug', 'commentsNum', 'text')
+        ->from('table.contents')
+        ->where('status = ?', 'publish') // 增加状态过滤
+        ->where('password IS NULL');
+
+    if (is_numeric($cid)) {
+        $select->where('cid = ?', $cid);
+    } elseif (!empty($slug)) {
+        $select->where('slug = ?', $slug);
+    }
+
+    $result = $this->db->fetchRow($select);
+
+    // 调试代码，可以输出查询条件和结果
+    // error_log('Query Params - CID: ' . $cid . ', Slug: ' . $slug);
+    // error_log('Query Result: ' . print_r($result, true));
+
+    if ($result) {
+        $result = $this->filter($result);
+        $result['csrfToken'] = $this->generateCsrfToken($result['permalink']);
+        $this->throwData($result);
+    } else {
+        $this->throwError('post not exists', 404);
+    }
+}
 
     /**
      * 获取最新（最近）评论的接口
